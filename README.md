@@ -4,10 +4,14 @@
 
 2) Please arrange the standard input files as stated in comments in 1st code blocks of files JOBS.sh and VASP.GPU.sb (do not modify INCAR's keyward values since the post processing script is gonna read them and change those values automatically)
 
-3) These scripts are designed for 18 ligands as given in our associated paper[1]. Those 18 ligands contains atom types N C O H F S. You need to change files JOBS.sh and VASP.GPU.sb if you have any other number of ligands or ligand types than described in our paper.
+3) These scripts are designed for 18 ligands as given in our associated paper[1]. Those 18 ligands contains atom types N C O H F S. You need to modify few code lines in files JOBS.sh and VASP.GPU.sb if you have any other number of ligands or ligand types than described in our paper. Please refer to trajectory video of one of complexes modelled[2].
+
 
 
 [1]
 http://dx.doi.org/10.13140/RG.2.2.21360.58885
 Drug repurposing for SARS-COV-2: A high-throughput molecular docking, molecular dynamics, machine learning, & ab-initio study
 Jatin Kashyap, Dibakar Datta
+
+[2]
+https://youtu.be/4yTQf053AGM
