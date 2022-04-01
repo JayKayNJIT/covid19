@@ -1,5 +1,4 @@
-# covid19
-high through put DFT analysis
+# Drug repurposing for SARS-COV-2: A high-throughput molecular docking, molecular dynamics, machine learning, & ab-initio study
 
 1) Only JOBS.sh need to be called by the user to perform a) POTCAR file constructions b) perform VASP relax calculations c) HOMO/LUMO orbital plots d) Bader charge plots
 
