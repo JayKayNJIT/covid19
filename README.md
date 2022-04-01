@@ -10,7 +10,7 @@
 
 [1]
 http://dx.doi.org/10.13140/RG.2.2.21360.58885
-Drug repurposing for SARS-COV-2: A high-throughput molecular docking, molecular dynamics, machine learning, & ab-initio study
+Drug repurposing for SARS-COV-2: A high-throughput molecular docking, molecular dynamics, machine learning, & ab-initio study 
 Jatin Kashyap, Dibakar Datta
 
 [2]
