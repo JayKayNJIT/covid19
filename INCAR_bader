@@ -1,0 +1,6 @@
+NSW = 0
+LCHARG = .TRUE.
+LAECHG = .TRUE.
+
+LREAL = A        ! https://www.nvidia.com/en-us/data-center/gpu-accelerated-applications/vasp/
+NCORE =1         ! https://www.nvidia.com/en-us/data-center/gpu-accelerated-applications/vasp/
