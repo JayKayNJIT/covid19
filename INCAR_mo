@@ -1,0 +1,11 @@
+! electronic optimization
+ENCUT = 300
+ISMEAR = 0; SIGMA = 0.1
+
+! ionic relaxation
+ALGO = VeryFast  ! for RMM-DIIS from https://www.nvidia.com/en-us/data-center/gpu-accelerated-applications/vasp/
+LREAL = A        ! https://www.nvidia.com/en-us/data-center/gpu-accelerated-applications/vasp/
+NCORE =1         ! https://www.nvidia.com/en-us/data-center/gpu-accelerated-applications/vasp/
+
+LPARD = .TRUE.
+IBAND = 67
