@@ -1,0 +1,262 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH -t 06:00:00
+#SBATCH -e vasp_gpu.err
+#SBATCH -p gpu-shared
+#SBATCH --gres=gpu:k80:1
+#SBATCH --export=ALL
+
+module unload intel
+module load vasp
+module load cuda
+exe=`which vasp_gpu`
+processors=$(( $SLURM_NNODES * $SLURM_NTASKS_PER_NODE ))
+mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log
+
+mo_files='absolute/path/to/orbital_calculation/input/files/' # cleanup.sh  INCAR(please look for file INCAR_mo for this file format) KPOINTS
+bader_files='absolute/path/to/bader_calculation/input/files/' # bader  chgsum.pl  INCAR(please look for file INCAR_bader for this file format) (bader,chgsum.pl can be obtained from http://theory.cm.utexas.edu/henkelman/code/bader/ )
+
+# checking last ionic loop
+grep -h Iteration OUTCAR >>iter.txt
+ionic=(); scf=()
+while read -r line; do
+  if [[ "$line" =~ ([0-9]+)\(\ +([0-9]+) ]]; then
+    ionic+=("${BASH_REMATCH[1]}")
+    scf+=("${BASH_REMATCH[2]}")
+  fi
+done < iter.txt
+len=(${#scf[@]})
+if [ "${scf[$len-1]}" == 60 ]   # -1 bcos indexing starts at 0 1 2 ...
+then
+    declare -i xx && xx=1 && echo $xx
+    while [ ${scf[$len-(60*$xx)-1]} == 60 ]
+    do
+        xx+=1
+    done
+    newNSW="${ionic[$len-(60*$xx)-1]}"
+    mkdir nextRelax && cp cleanup.sh INCAR KPOINTS POTCAR POSCAR nextRelax/ && cd nextRelax/ && 
+    cp INCAR INCAR.tmp && sed "s/NSW = 10/NSW = $newNSW/" <INCAR.tmp >INCAR && rm -f INCAR.tmp &&
+    mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log
+    cd ../ ; rm OUTCAR LOCPOT CHGCAR WAVECAR XDATCAR ; sh cleanup.sh ; cd nextRelax/ ; 
+    mv OUTCAR LOCPOT CHGCAR WAVECAR XDATCAR CONTCAR ../ ; cd ../ 
+
+    ##################################################### assigning HOMO and LUMO variables
+    x=$(awk '/E-fermi/{print NR}' OUTCAR)
+    echo $x>>row.txt
+    tr -s ' '  '\n'< row.txt > column.txt
+    rm row.txt ; mv column.txt temp.txt
+    lastElement=$( tail -n 1 temp.txt )
+    rm temp.txt
+    tail -n +$lastElement OUTCAR >>tempB.txt
+    sed -n '/band No.  band energies     occupation/,/soft charge-density along one line/p' tempB.txt >>tempC.txt
+    rm tempB.txt
+    grep 2.00000 tempC.txt | tail -1>>HOMO.txt
+    grep -m 1 0.00000 tempC.txt >>LUMO.txt
+    rm tempC.txt
+    tr -s ' '  '\n'< HOMO.txt > HOMO_Col.txt
+    mapfile -t myArray < HOMO_Col.txt
+    nHOMO=${myArray[1]} ; unset myArray
+    tr -s ' '  '\n'< LUMO.txt > LUMO_Col.txt
+    mapfile -t myArray < LUMO_Col.txt
+    nLUMO=${myArray[1]} ; unset myArray
+    rm HOMO.txt HOMO_Col.txt LUMO.txt LUMO_Col.txt ; unset x 
+    ##################################################### assigning HOMO and LUMO variables ends
+
+
+    ##################################################### molecular orbital job
+
+    mkdir MO && cd MO && cp $mo_files/* ./ && cp ../CONTCAR ./ && mv CONTCAR POSCAR && cp ../POTCAR ./ && cp ../WAVECAR ./ &&
+    cp INCAR INCAR.tmp && sed "s/67/$nHOMO/" <INCAR.tmp >INCAR && rm -f INCAR.tmp &&
+    mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log &&
+    mkdir HOMO/ && mv PARCHG INCAR vasp.log OUTCAR HOMO/ && sh cleanup.sh && 
+    cp $mo_files/INCAR ./ && cp INCAR INCAR.tmp && sed "s/67/$nLUMO/" <INCAR.tmp >INCAR && rm -f INCAR.tmp &&
+    mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log &&
+    mkdir LUMO/ && mv PARCHG INCAR vasp.log OUTCAR LUMO/ && sh cleanup.sh && rm WAVECAR ; unset nHOMO ; unset nLUMO
+    cd ../    # for bader calculations
+
+    ##################################################### molecular orbital job ends
+
+    ############## BADER job
+    mkdir BADER && cd BADER/ && cp $bader_files/* ./ && cp ../WAVECAR ./ && cp ../KPOINTS ./ && cp ../PO* ./ &&
+    # Step 2
+    mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log
+    # Step 3
+    ./chgsum.pl AECCAR0 AECCAR2
+    # step 4 
+    chmod +x bader && ./bader CHGCAR -ref CHGCAR_sum
+    # step 5
+
+    elements=() ; 
+    awk 'NR==6' POSCAR>>POSCAR_temp
+    tr -s ' '  '\n'< POSCAR_temp > POSCAR_temp2
+    rm POSCAR_temp && mv POSCAR_temp2 POSCAR_temp
+    mapfile -t elements < POSCAR_temp
+    echo ${elements[@]}
+
+    ele_quant=() ; rm POSCAR_temp ;
+    awk 'NR==7' POSCAR>>POSCAR_temp
+    tr -s ' '  '\n'< POSCAR_temp > POSCAR_temp2
+    rm POSCAR_temp && mv POSCAR_temp2 POSCAR_temp
+    mapfile -t ele_quant < POSCAR_temp
+    echo ${ele_quant[@]} && rm POSCAR_temp
+
+    rm ACF_tmp
+    sed -e '1,2d' < ACF.dat>>ACF_tmp && head -n -4 ACF_tmp>>ACF_tmp2 && rm ACF_tmp 
+    mv ACF_tmp2 ACF_tmp 
+
+    readarray -t charge < <(cat ACF_tmp | tr -s ' ' | cut -d' ' -f6) # array name is charge
+    rm ACF_tmp
+    echo ${charge[@]}
+    declare -i N ; declare -i C ; declare -i O ; declare -i H ; declare -i F ; declare -i S ;
+    N=5 ; C=4 ; O=6 ; H=1 ; F=7 ; S=6
+    ZVAL=()
+    for (( i=0; i<=$(( ${#elements[*]} -1 )) ; i++ ))
+    do
+    if   [[ ${elements[$i]} == N ]]
+    then
+            ZVAL+=("$N")
+    elif [[ ${elements[$i]} == C ]]
+    then
+            ZVAL+=("$C")
+    elif [[ ${elements[$i]} == O ]]
+    then
+            ZVAL+=("$O")
+    elif [[ ${elements[$i]} == H ]]
+    then
+            ZVAL+=("$H")
+    elif [[ ${elements[$i]} == F ]]
+    then
+            ZVAL+=("$F")
+    else
+            ZVAL+=("$S")
+    fi
+    done
+    echo ${#ZVAL[*]} ; echo ${ZVAL[@]} ;
+    temp=0 ; array=() ; declare -i yy ;  yy=0
+    for value in "${ele_quant[@]}"
+    do
+    for (( i=0+$temp; i<$value+$temp; i++ ))
+    do
+        array+=("$i")
+        #charge[$i]=$(bc<<<"${charge[$i]} - ${ZVAL[$yy]}")
+        charge[$i]=$(bc<<<"${ZVAL[$yy]} - ${charge[$i]}")
+    done
+    temp=${#array[*]}
+    yy+=1
+    done
+    echo ${charge[@]}>>mod_charge.txt && unset yy
+    rm AECCAR* CHG* WAVECAR
+    ############## BADER job ends
+
+else
+# checking last ionic loop end
+
+##################################################### assigning HOMO and LUMO variables
+x=$(awk '/E-fermi/{print NR}' OUTCAR)
+echo $x>>row.txt
+tr -s ' '  '\n'< row.txt > column.txt
+rm row.txt ; mv column.txt temp.txt
+lastElement=$( tail -n 1 temp.txt )
+rm temp.txt
+tail -n +$lastElement OUTCAR >>tempB.txt
+sed -n '/band No.  band energies     occupation/,/soft charge-density along one line/p' tempB.txt >>tempC.txt
+rm tempB.txt
+grep 2.00000 tempC.txt | tail -1>>HOMO.txt
+grep -m 1 0.00000 tempC.txt >>LUMO.txt
+rm tempC.txt
+tr -s ' '  '\n'< HOMO.txt > HOMO_Col.txt
+mapfile -t myArray < HOMO_Col.txt
+nHOMO=${myArray[1]} ; unset myArray
+tr -s ' '  '\n'< LUMO.txt > LUMO_Col.txt
+mapfile -t myArray < LUMO_Col.txt
+nLUMO=${myArray[1]} ; unset myArray
+rm HOMO.txt HOMO_Col.txt LUMO.txt LUMO_Col.txt ; unset x 
+##################################################### assigning HOMO and LUMO variables ends
+
+
+##################################################### molecular orbital job
+
+mkdir MO && cd MO && cp $mo_files/* ./ && cp ../CONTCAR ./ && mv CONTCAR POSCAR && cp ../POTCAR ./ && cp ../WAVECAR ./ &&
+cp INCAR INCAR.tmp && sed "s/67/$nHOMO/" <INCAR.tmp >INCAR && rm -f INCAR.tmp &&
+mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log &&
+mkdir HOMO/ && mv PARCHG INCAR vasp.log OUTCAR HOMO/ && sh cleanup.sh && 
+cp $mo_files/INCAR ./ && cp INCAR INCAR.tmp && sed "s/67/$nLUMO/" <INCAR.tmp >INCAR && rm -f INCAR.tmp &&
+mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log &&
+mkdir LUMO/ && mv PARCHG INCAR vasp.log OUTCAR LUMO/ && sh cleanup.sh && rm WAVECAR ; unset nHOMO ; unset nLUMO
+cd ../    # for bader calculations
+
+##################################################### molecular orbital job ends
+
+############## BADER job
+mkdir BADER && cd BADER/ && cp $bader_files/* ./ && cp ../WAVECAR ./ && cp ../KPOINTS ./ && cp ../PO* ./ &&
+# Step 2
+mpirun -np $processors -genv I_MPI_FABRICS shm:ofa $exe >& vasp.log
+# Step 3
+./chgsum.pl AECCAR0 AECCAR2
+# step 4 
+chmod +x bader && ./bader CHGCAR -ref CHGCAR_sum
+# step 5
+
+elements=() ; 
+awk 'NR==6' POSCAR>>POSCAR_temp
+tr -s ' '  '\n'< POSCAR_temp > POSCAR_temp2
+rm POSCAR_temp && mv POSCAR_temp2 POSCAR_temp
+mapfile -t elements < POSCAR_temp
+echo ${elements[@]}
+
+ele_quant=() ; rm POSCAR_temp ;
+awk 'NR==7' POSCAR>>POSCAR_temp
+tr -s ' '  '\n'< POSCAR_temp > POSCAR_temp2
+rm POSCAR_temp && mv POSCAR_temp2 POSCAR_temp
+mapfile -t ele_quant < POSCAR_temp
+echo ${ele_quant[@]} && rm POSCAR_temp
+
+rm ACF_tmp
+sed -e '1,2d' < ACF.dat>>ACF_tmp && head -n -4 ACF_tmp>>ACF_tmp2 && rm ACF_tmp 
+mv ACF_tmp2 ACF_tmp 
+
+readarray -t charge < <(cat ACF_tmp | tr -s ' ' | cut -d' ' -f6) # array name is charge
+rm ACF_tmp
+echo ${charge[@]}
+declare -i N ; declare -i C ; declare -i O ; declare -i H ; declare -i F ; declare -i S ;
+N=5 ; C=4 ; O=6 ; H=1 ; F=7 ; S=6
+ZVAL=()
+for (( i=0; i<=$(( ${#elements[*]} -1 )) ; i++ ))
+do
+if   [[ ${elements[$i]} == N ]]
+then
+        ZVAL+=("$N")
+elif [[ ${elements[$i]} == C ]]
+then
+        ZVAL+=("$C")
+elif [[ ${elements[$i]} == O ]]
+then
+        ZVAL+=("$O")
+elif [[ ${elements[$i]} == H ]]
+then
+        ZVAL+=("$H")
+elif [[ ${elements[$i]} == F ]]
+then
+        ZVAL+=("$F")
+else
+        ZVAL+=("$S")
+fi
+done
+echo ${#ZVAL[*]} ; echo ${ZVAL[@]} ;
+temp=0 ; array=() ; declare -i yy ;  yy=0
+for value in "${ele_quant[@]}"
+do
+for (( i=0+$temp; i<$value+$temp; i++ ))
+do
+    array+=("$i")
+    #charge[$i]=$(bc<<<"${charge[$i]} - ${ZVAL[$yy]}")
+    charge[$i]=$(bc<<<"${ZVAL[$yy]} - ${charge[$i]}")
+done
+  temp=${#array[*]}
+  yy+=1
+done
+echo ${charge[@]}>>mod_charge.txt && unset yy
+rm AECCAR* CHG* WAVECAR
+############## BADER job ends
+fi
