@@ -6,7 +6,7 @@
 
 3) These scripts are designed for 18 ligands as given in our associated paper[1]. Those 18 ligands contains atom types N C O H F S. You need to modify few code lines in files JOBS.sh and VASP.GPU.sb if you have any other number of ligands or ligand types than described in our paper. Please refer to trajectory video of one of complexes modelled[2].
 
-
+4) One can loop script, Bio_Ligands_Char.sh, through all ligands to calculate the quantum chemical characterstics as explain in the publication[1]. 
 
 [1]
 http://dx.doi.org/10.13140/RG.2.2.21360.58885
