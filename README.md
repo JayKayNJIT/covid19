@@ -11,6 +11,7 @@
 [1]
 https://link.springer.com/article/10.1007/s10853-022-07195-8
 Drug repurposing for SARS-CoV-2: a high-throughput molecular docking, molecular dynamics, machine learning, and DFT study
+
 Jatin Kashyap, Dibakar Datta
 
 [2]
