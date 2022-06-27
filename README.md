@@ -1,4 +1,4 @@
-# Drug repurposing for SARS-COV-2: A high-throughput molecular docking, molecular dynamics, machine learning, & ab-initio study
+# Drug repurposing for SARS-CoV-2: a high-throughput molecular docking, molecular dynamics, machine learning, and DFT study
 
 1) Only JOBS.sh need to be called by the user to perform a) POTCAR file constructions b) perform VASP relax calculations c) HOMO/LUMO orbital plots d) Bader charge plots
 
@@ -9,8 +9,8 @@
 4) One can loop script, Bio_Ligands_Char.sh, through all ligands to calculate the quantum chemical characterstics as explain in the publication[1]. 
 
 [1]
-http://dx.doi.org/10.13140/RG.2.2.21360.58885
-Drug repurposing for SARS-COV-2: A high-throughput molecular docking, molecular dynamics, machine learning, & ab-initio study 
+https://link.springer.com/article/10.1007/s10853-022-07195-8
+Drug repurposing for SARS-CoV-2: a high-throughput molecular docking, molecular dynamics, machine learning, and DFT study
 Jatin Kashyap, Dibakar Datta
 
 [2]
